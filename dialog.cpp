@@ -1,5 +1,6 @@
 #include "dialog.h"
 #include "ui_dialog.h"
+#include <cstring>
 #include <QFile>
 #include <QFileDialog>
 #include <QTextStream>
@@ -7,12 +8,18 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <QThread>
+
 
 Dialog::Dialog(QWidget *parent)
     : QDialog(parent)
     , ui(new Ui::Dialog)
 {
     ui->setupUi(this);
+    ui->progressBar->setValue(0);
+    connect(ui->progressBar, SIGNAL(valueChanged(int)), this, SLOT(on_progressBar_valueChanged(int)));
+
+
 
 
     arduino = new QSerialPort;
@@ -22,13 +29,15 @@ Dialog::Dialog(QWidget *parent)
 
     //view port on your system
     qDebug() << "Number of Ports: " << QSerialPortInfo::availablePorts().length();
+    ui->Logs->setText("Number of Ports: " + QString::number(QSerialPortInfo::availablePorts().length()));
     foreach (const QSerialPortInfo &serialPortInfo, QSerialPortInfo::availablePorts())
     {
         if(serialPortInfo.hasVendorIdentifier() && serialPortInfo.hasProductIdentifier())
         {
             qDebug() << "Vendor ID: " << serialPortInfo.vendorIdentifier();
             qDebug() << "Product ID " << serialPortInfo.productIdentifier();
-
+            ui->Logs->append("Vendor ID: " + QString::number(serialPortInfo.vendorIdentifier()));
+            ui->Logs->append("Product ID: " + QString::number(serialPortInfo.productIdentifier()));
         }
     }
 
@@ -44,9 +53,9 @@ Dialog::Dialog(QWidget *parent)
                     arduino_port_name = serialPortInfo.portName();
                     arduino_is_available = true;
                     qDebug() << "Port Availble!";
+                    ui->Logs->append("Port Available!");
                 }
             }
-
         }
     }
 
@@ -57,12 +66,13 @@ Dialog::Dialog(QWidget *parent)
         if (arduino->open(QSerialPort::ReadWrite))  // Open in ReadWrite mode
         {
             qDebug() << "Serial port opened successfully for reading and writing.";
-            // Add a short delay if needed
+            ui->Logs->append("Serial port opened successfully for reading and writing.");
             QThread::msleep(100);
         }
         else
         {
             qDebug() << "Error opening serial port for reading and writing: " << arduino->errorString();
+            ui->Logs->append("Error opening serial port for reading and writing: " + arduino->errorString());
         }
         arduino->setBaudRate(QSerialPort:: Baud9600);
         arduino->setDataBits(QSerialPort:: Data8);
@@ -73,11 +83,9 @@ Dialog::Dialog(QWidget *parent)
     else
     {
         QMessageBox::warning(this, "Port error", "Couldn't find arduino");
+        ui->Logs->append("Port Error, Couldn't find arduino");
     }
-
     connect(arduino, SIGNAL(readyRead()), this, SLOT(ReadFromArduino()));
-
-
 }
 
 Dialog::~Dialog()
@@ -85,25 +93,25 @@ Dialog::~Dialog()
     if(arduino->isOpen())
     {
         qDebug() << "closing port";
+        ui->Logs->append("closing port");
         arduino->close();
     }
     delete ui;
 }
 
-
-
-void Dialog::ReadFromArduino()
+QString Dialog::ReadFromArduino()
 {
     QByteArray responseData = arduino->readAll();
     QThread::msleep(100);
     QString response(responseData);
 
     qDebug() << "Received response from Arduino: " << response;
-    // Update the label with the received response
-    //ui->label1->setText(response);
 
     arduino->flush();
+
+    return response;
 }
+
 
 
 void Dialog::WriteToArduino(QString command)
@@ -125,16 +133,11 @@ void Dialog::WriteToArduino(QString command)
     else
     {
         qDebug() << "Serial port is not open!";
+        ui->Logs->append("Serial port is not open!");
+
     }
 }
 
-
-void Dialog::on_BtHomePoint_clicked()
-{
-    QString text = "Home";
-    WriteToArduino(text);
-    ReadFromArduino();
-}
 
 void Dialog::HPGL_to_Stack(const QString& HPGL) {
     std::regex PenUp_Pattern("PU([0-9]+),([0-9]+)");
@@ -152,6 +155,7 @@ void Dialog::HPGL_to_Stack(const QString& HPGL) {
                 int y = std::stod(match[2]);
                 QString command = "PU," + QString::number(x) + "," + QString::number(y) + '\n';
                 commandStack.push(command);
+                PrograssBarCounter++;
             }
         } else if (std::regex_search(lineStr, match, PenDown_Pattern)) {
             if (match.size() == 3) {
@@ -159,14 +163,12 @@ void Dialog::HPGL_to_Stack(const QString& HPGL) {
                 int y = std::stod(match[2]);
                 QString command = "PD," + QString::number(x) + "," + QString::number(y) + '\n';
                 commandStack.push(command);
+                PrograssBarCounter++;
             }
         }
     }
+    ui->progressBar->setMaximum(PrograssBarCounter);
     commandStack = Reverse_Stack(commandStack);
-    while (!commandStack.empty()) {
-        qDebug() << commandStack.top();
-        commandStack.pop();
-    }
 
 }
 
@@ -221,16 +223,12 @@ QStringList Dialog::split_to_commands(const QString& str)
             result << command << ";";
         }
     }
-
     // Convert the formatted HPGL string to a QStringList
     QString formattedCommands = QString::fromStdString(result.str());
     commandList = formattedCommands.split(';');
 
     return commandList;
 }
-
-
-
 
 void Dialog::on_Open_Hpgl_file_clicked()
 {
@@ -248,3 +246,21 @@ void Dialog::on_Open_Hpgl_file_clicked()
     file.close();
 }
 
+
+void Dialog::on_StartSendingData_clicked()
+{
+    while (!commandStack.empty())
+    {
+        WriteToArduino(commandStack.top());
+        QString check_error = ReadFromArduino();
+        if(check_error == "Failed")
+        {
+            ui->Logs->append("Failed, Couldn't sending Data to Arduino");
+            return;
+        }
+        commandStack.pop();
+        int currentValue = ui->progressBar->value();
+        ui->progressBar->setValue(currentValue + 1);
+    }
+
+}

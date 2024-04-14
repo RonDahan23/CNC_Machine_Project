@@ -24,21 +24,23 @@ public:
     Dialog(QWidget *parent = nullptr);
     ~Dialog();
     static QStringList split_to_commands(const QString& str);
+    int PrograssBarCounter = 0;
 
 
 private slots:
     void WriteToArduino(QString command);
-    void ReadFromArduino();
+    QString ReadFromArduino();
     void HPGL_to_Stack(const QString& HPGL);
-    void on_BtHomePoint_clicked();
     void on_Open_Hpgl_file_clicked();
     std::stack<QString>Reverse_Stack(std::stack<QString> commandStack);
+    void on_StartSendingData_clicked();
+    void on_progressBar_valueChanged(int value);
+    void sendDataToArduino();
+
 
 private:
     Ui::Dialog *ui;
     QString fileContent;
-    float lastX = 0;
-    float lastY = 0;
     QString Number;
     QSerialPort *arduino;
     static const quint16 arduino_uno_vendorID = 9025;
@@ -48,6 +50,12 @@ private:
     QString Data_From_SerialPort;
     bool IS_Data_Recevied = false;
     std::stack<QString> commandStack;
+
+signals:
+    void sendDataFailed();
+    void updateProgressBar();
+    void sendDataCompleted();
+
 
 };
 
