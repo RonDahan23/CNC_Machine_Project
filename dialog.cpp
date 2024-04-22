@@ -16,16 +16,18 @@ Dialog::Dialog(QWidget *parent)
     , ui(new Ui::Dialog)
 {
     ui->setupUi(this);
+
+    Timer = new QTimer(this);
+
+    connect(Timer, SIGNAL(timeout()), this, SLOT(on_StartSendData_BT_clicked()));
+
+
     ui->progressBar->setValue(0);
     connect(ui->progressBar, SIGNAL(valueChanged(int)), this, SLOT(on_progressBar_valueChanged(int)));
-
-
-
 
     arduino = new QSerialPort;
     arduino_is_available = false;
     arduino_port_name = "";
-
 
     //view port on your system
     qDebug() << "Number of Ports: " << QSerialPortInfo::availablePorts().length();
@@ -40,7 +42,6 @@ Dialog::Dialog(QWidget *parent)
             ui->Logs->append("Product ID: " + QString::number(serialPortInfo.productIdentifier()));
         }
     }
-
     //check which port the arduino is on
     foreach (const QSerialPortInfo &serialPortInfo, QSerialPortInfo::availablePorts())
     {
@@ -58,7 +59,6 @@ Dialog::Dialog(QWidget *parent)
             }
         }
     }
-
 
     if (arduino_is_available)
     {
@@ -99,42 +99,18 @@ Dialog::~Dialog()
     delete ui;
 }
 
-QString Dialog::ReadFromArduino()
+
+void Dialog::ReadFromArduino()
 {
-    QByteArray responseData = arduino->readAll();
-    QThread::msleep(100);
-    QString response(responseData);
+    QString response = "";
 
-    qDebug() << "Received response from Arduino: " << response;
-
-    arduino->flush();
-
-    return response;
-}
-
-
-
-void Dialog::WriteToArduino(QString command)
-{
-    if (arduino->isOpen())
+    if (arduino->bytesAvailable() > 0)
     {
-        qint64 bytesWritten = arduino->write(command.toLatin1() + '\n');
-        if (bytesWritten == -1)
-        {
-            qDebug() << "Error writing to serial port: " << arduino->errorString();
-        }
-        else
-        {
-            qDebug() << "Bytes written successfully: " << bytesWritten;
-        }
-
-        arduino->flush();
-    }
-    else
-    {
-        qDebug() << "Serial port is not open!";
-        ui->Logs->append("Serial port is not open!");
-
+        QByteArray responseData = arduino->readAll();
+        response = QString(responseData);
+        if (response.trimmed() != "")
+            check_S_or_F = response.at(0);
+        qDebug() << "Received response from Arduino: " << check_S_or_F;
     }
 }
 
@@ -168,6 +144,7 @@ void Dialog::HPGL_to_Stack(const QString& HPGL) {
         }
     }
     ui->progressBar->setMaximum(PrograssBarCounter);
+
     commandStack = Reverse_Stack(commandStack);
 
 }
@@ -247,20 +224,30 @@ void Dialog::on_Open_Hpgl_file_clicked()
 }
 
 
-void Dialog::on_StartSendingData_clicked()
+void Dialog::on_StartSendData_BT_clicked()
 {
-    while (!commandStack.empty())
+    Timer->start(100);
+    if(check_S_or_F != "" && !commandStack.empty() && !Stop)
     {
-        WriteToArduino(commandStack.top());
-        QString check_error = ReadFromArduino();
-        if(check_error == "Failed")
+        if(check_S_or_F == "S")
         {
-            ui->Logs->append("Failed, Couldn't sending Data to Arduino");
-            return;
+            QString command = commandStack.top();
+            arduino->write(command.toLatin1());
+            commandStack.pop();
+            int currentValue = ui->progressBar->value();
+            ui->progressBar->setValue(currentValue + 1);
+            qDebug() << "Sent command to Arduino: " << command;
+            check_S_or_F = "";
         }
-        commandStack.pop();
-        int currentValue = ui->progressBar->value();
-        ui->progressBar->setValue(currentValue + 1);
+        else if (check_S_or_F == "F")
+        {
+            ui->Logs->append("Failed, Couldn't send data to Arduino");
+            Stop = true;
+        }
     }
-
+    else
+    {
+        qDebug() << "No data available from Arduino yet.";
+    }
 }
+
