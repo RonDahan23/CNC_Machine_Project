@@ -12,7 +12,7 @@
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
-class Dialog;
+class CNC_Machine;
 }
 QT_END_NAMESPACE
 
@@ -36,7 +36,7 @@ private slots:
     void on_StartSendData_BT_clicked();
 
 private:
-    Ui::Dialog *ui;
+    Ui::CNC_Machine *ui;
     QString fileContent;
     QString Number;
     QSerialPort *arduino;

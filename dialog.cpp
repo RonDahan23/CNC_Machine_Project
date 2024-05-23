@@ -13,7 +13,7 @@
 
 Dialog::Dialog(QWidget *parent)
     : QDialog(parent)
-    , ui(new Ui::Dialog)
+    , ui(new Ui::CNC_Machine)
 {
     ui->setupUi(this);
 
@@ -144,6 +144,7 @@ void Dialog::HPGL_to_Stack(const QString& HPGL) {
         }
     }
     ui->progressBar->setMaximum(PrograssBarCounter);
+    qDebug() << PrograssBarCounter;
 
     commandStack = Reverse_Stack(commandStack);
 
