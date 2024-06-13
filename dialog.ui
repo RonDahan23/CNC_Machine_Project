@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>473</width>
-    <height>339</height>
+    <width>470</width>
+    <height>338</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -22,7 +22,7 @@ background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0, stop:0 rgba(4, 4
   <widget class="QPushButton" name="Open_Hpgl_file">
    <property name="geometry">
     <rect>
-     <x>200</x>
+     <x>195</x>
      <y>100</y>
      <width>80</width>
      <height>24</height>
@@ -39,7 +39,7 @@ color: rgb(255, 255, 255);</string>
   <widget class="QProgressBar" name="progressBar">
    <property name="geometry">
     <rect>
-     <x>200</x>
+     <x>195</x>
      <y>150</y>
      <width>118</width>
      <height>23</height>
@@ -65,11 +65,14 @@ color: rgb(255, 255, 255);</string>
    <property name="styleSheet">
     <string notr="true">color: rgb(255, 255, 255);</string>
    </property>
+   <property name="readOnly">
+    <bool>true</bool>
+   </property>
   </widget>
   <widget class="QPushButton" name="StartSendData_BT">
    <property name="geometry">
     <rect>
-     <x>185</x>
+     <x>175</x>
      <y>190</y>
      <width>121</width>
      <height>51</height>

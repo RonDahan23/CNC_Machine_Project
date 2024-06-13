@@ -34,6 +34,8 @@ private slots:
     void on_progressBar_valueChanged(int value);
     void ReadFromArduino();
     void on_StartSendData_BT_clicked();
+    void Estimated_time_calculation();
+
 
 private:
     Ui::CNC_Machine *ui;
@@ -42,6 +44,7 @@ private:
     QSerialPort *arduino;
     static const quint16 arduino_uno_vendorID = 9025;
     static const quint16 arduino_uno_productID = 67;
+    static constexpr double Estimated_time_per_command = 0.04;
     QString arduino_port_name;
     bool arduino_is_available;
     QString Data_From_SerialPort;

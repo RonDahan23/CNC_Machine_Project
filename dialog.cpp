@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <QThread>
+#include <QElapsedTimer>
 
 
 Dialog::Dialog(QWidget *parent)
@@ -63,7 +64,7 @@ Dialog::Dialog(QWidget *parent)
     if (arduino_is_available)
     {
         arduino->setPortName(arduino_port_name);
-        if (arduino->open(QSerialPort::ReadWrite))  // Open in ReadWrite mode
+        if (arduino->open(QSerialPort::ReadWrite))
         {
             qDebug() << "Serial port opened successfully for reading and writing.";
             ui->Logs->append("Serial port opened successfully for reading and writing.");
@@ -74,11 +75,11 @@ Dialog::Dialog(QWidget *parent)
             qDebug() << "Error opening serial port for reading and writing: " << arduino->errorString();
             ui->Logs->append("Error opening serial port for reading and writing: " + arduino->errorString());
         }
-        arduino->setBaudRate(QSerialPort:: Baud9600);
-        arduino->setDataBits(QSerialPort:: Data8);
-        arduino->setParity(QSerialPort::NoParity);
-        arduino->setStopBits(QSerialPort::OneStop);
-        arduino->setFlowControl(QSerialPort::NoFlowControl);
+        arduino->setBaudRate(QSerialPort:: Baud115200);
+        arduino->setDataBits(QSerialPort:: Data8); //8 data bits per character
+        arduino->setParity(QSerialPort::NoParity);  //no parity bit will be used
+        arduino->setStopBits(QSerialPort::OneStop); //one stop bit will be used
+        arduino->setFlowControl(QSerialPort::NoFlowControl); //no hardware or software flow control will be used (מנגנון בקרת זרימה)
     }
     else
     {
@@ -99,7 +100,6 @@ Dialog::~Dialog()
     delete ui;
 }
 
-
 void Dialog::ReadFromArduino()
 {
     QString response = "";
@@ -107,12 +107,15 @@ void Dialog::ReadFromArduino()
     if (arduino->bytesAvailable() > 0)
     {
         QByteArray responseData = arduino->readAll();
-        response = QString(responseData);
-        if (response.trimmed() != "")
+        response = QString(responseData).trimmed();  // Remove leading and trailing whitespace, including newlines
+        if (!response.isEmpty())
+        {
             check_S_or_F = response.at(0);
-        qDebug() << "Received response from Arduino: " << check_S_or_F;
+            qDebug() << "Received response from Arduino: " << check_S_or_F;
+        }
     }
 }
+
 
 
 void Dialog::HPGL_to_Stack(const QString& HPGL) {
@@ -145,10 +148,66 @@ void Dialog::HPGL_to_Stack(const QString& HPGL) {
     }
     ui->progressBar->setMaximum(PrograssBarCounter);
     qDebug() << PrograssBarCounter;
-
+    Estimated_time_calculation();
     commandStack = Reverse_Stack(commandStack);
 
 }
+void Dialog::Estimated_time_calculation()
+{
+    double estimatedTimeInSeconds = Estimated_time_per_command * PrograssBarCounter;
+
+    QString timeString;
+
+    if (estimatedTimeInSeconds < 60) {
+        // Round the seconds to the nearest whole number
+        int roundedSeconds = static_cast<int>(estimatedTimeInSeconds + 0.5);
+        timeString = QString::number(roundedSeconds) + " seconds";
+    } else if (estimatedTimeInSeconds < 3600) {
+        int minutes = static_cast<int>(estimatedTimeInSeconds / 60);
+        double remainingSeconds = estimatedTimeInSeconds - (minutes * 60);
+
+        // Round the remaining seconds to the nearest whole number
+        int roundedSeconds = static_cast<int>(remainingSeconds + 0.5);
+
+        // Handle the case where rounding might increase the seconds to 60
+        if (roundedSeconds == 60) {
+            minutes += 1;
+            roundedSeconds = 0;
+        }
+
+        timeString = QString::number(minutes) + " minutes and " +
+                     QString::number(roundedSeconds) + " seconds";
+    } else {
+        int hours = static_cast<int>(estimatedTimeInSeconds / 3600);
+        double remainingMinutesAndSeconds = estimatedTimeInSeconds - (hours * 3600);
+
+        int minutes = static_cast<int>(remainingMinutesAndSeconds / 60);
+        double remainingSeconds = remainingMinutesAndSeconds - (minutes * 60);
+
+        // Round the remaining seconds to the nearest whole number
+        int roundedSeconds = static_cast<int>(remainingSeconds + 0.5);
+
+        // Handle the case where rounding might increase the seconds to 60
+        if (roundedSeconds == 60) {
+            minutes += 1;
+            roundedSeconds = 0;
+        }
+
+        // Handle the case where rounding might increase the minutes to 60
+        if (minutes == 60) {
+            hours += 1;
+            minutes = 0;
+        }
+
+        timeString = QString::number(hours) + " hours, " +
+                     QString::number(minutes) + " minutes and " +
+                     QString::number(roundedSeconds) + " seconds";
+    }
+
+    // Append to Logs
+    ui->Logs->append("Estimated time to finish painting: " + timeString);
+}
+
 
 std::stack<QString> Dialog::Reverse_Stack(std::stack<QString> commandStack)
 {
@@ -219,7 +278,7 @@ void Dialog::on_Open_Hpgl_file_clicked()
     if (!file.open(QIODevice::ReadWrite | QIODevice::Text))
         return;
     QTextStream in(&file);
-    fileContent = in.readAll();  // Corrected variable name
+    fileContent = in.readAll();
     HPGL_to_Stack(fileContent);
     file.close();
 }
@@ -227,7 +286,17 @@ void Dialog::on_Open_Hpgl_file_clicked()
 
 void Dialog::on_StartSendData_BT_clicked()
 {
-    Timer->start(100);
+    static QElapsedTimer queueTimer;
+    static bool timerStarted = false;
+
+    if (!timerStarted) {
+        queueTimer.start();
+        ui->Logs->append("Queue processing started.");
+        qDebug() << "Queue processing started.";
+        Timer->start(1);
+        timerStarted = true;
+    }
+
     if(check_S_or_F != "" && !commandStack.empty() && !Stop)
     {
         if(check_S_or_F == "S")
@@ -237,7 +306,8 @@ void Dialog::on_StartSendData_BT_clicked()
             commandStack.pop();
             int currentValue = ui->progressBar->value();
             ui->progressBar->setValue(currentValue + 1);
-            qDebug() << "Sent command to Arduino: " << command;
+            qDebug() << "Sent command to Arduino: ;" << command;
+            qDebug() << "Queue processing: " << queueTimer.elapsed() / 1000.0 << " seconds.";
             check_S_or_F = "";
         }
         else if (check_S_or_F == "F")
@@ -250,5 +320,14 @@ void Dialog::on_StartSendData_BT_clicked()
     {
         qDebug() << "No data available from Arduino yet.";
     }
+
+    if (commandStack.empty() && timerStarted) {
+        qint64 elapsedMilliseconds = queueTimer.elapsed();
+        ui->Logs->append("Queue processing finished. Time elapsed: " + QString::number(elapsedMilliseconds / 1000.0) + " seconds.");
+        qDebug() << "Queue processing finished. Time elapsed: " << elapsedMilliseconds / 1000.0 << " seconds.";
+        timerStarted = false;
+        Timer->stop();
+    }
 }
+
 
